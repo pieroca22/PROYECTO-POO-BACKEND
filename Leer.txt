@@ -1,0 +1,10 @@
+Ignorar mecafab0. es la versión inicial (lleno de bugs y errores)
+
+- PARA LA DATABASE:
+vayan a la carpeta y entren versión final y ejecuten los scripts(NO TENER NINGUNA BASE ANTERIOR LLAMADA IGUAL)
+
+- PARA SPRING:
+Pueden abrir el proyecto directamente con mecafab, o pueden descomprimir el rar que esta en la carpeta Mecafab-Spring
+
+- PARA PRUEBAS DE POSTMAN:
+Ejecuten el .json que esta dentro de la carpeta PruebasPostmanEndPoints

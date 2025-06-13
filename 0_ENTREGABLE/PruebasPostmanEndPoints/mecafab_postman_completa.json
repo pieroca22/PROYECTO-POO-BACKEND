@@ -1,0 +1,265 @@
+{
+  "info": {
+    "name": "Mecafab API - Colecci\u00f3n Completa",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "POST - Ingresar Pedido - \u00c9xito",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8080/api/pedidos",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "pedidos"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"descripcionProducto\": \"Base met\\u00e1lica\",\n    \"tipoTrabajo\": \"Fresado CNC\",\n    \"fechaSolicitud\": \"2025-06-10\",\n    \"fechaEntregaComprometida\": \"2025-06-14\",\n    \"estadoId\": 1,\n    \"clienteId\": 1,\n    \"usuarioCreadorId\": 1,\n    \"operarioAsignadoId\": 2\n}"
+        }
+      }
+    },
+    {
+      "name": "POST - Ingresar Pedido - Error (fecha entrega inv\u00e1lida)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8080/api/pedidos",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "pedidos"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"descripcionProducto\": \"Producto defectuoso\",\n    \"tipoTrabajo\": \"Torneado\",\n    \"fechaSolicitud\": \"2025-06-12\",\n    \"fechaEntregaComprometida\": \"2025-06-01\",\n    \"estadoId\": 1,\n    \"clienteId\": 1,\n    \"usuarioCreadorId\": 1\n}"
+        }
+      }
+    },
+    {
+      "name": "PUT - Asignar Pedido - \u00c9xito",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8080/api/pedidos/asignar",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "pedidos",
+            "asignar"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"pedidoId\": 1,\n    \"operarioId\": 2,\n    \"nuevoEstadoId\": 2\n}"
+        }
+      }
+    },
+    {
+      "name": "PUT - Cambiar Estado - Error (mismo estado)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8080/api/pedidos/cambiar-estado",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "pedidos",
+            "cambiar-estado"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"pedidoId\": 1,\n    \"nuevoEstadoId\": 2,\n    \"usuarioResponsableId\": 1\n}"
+        }
+      }
+    },
+    {
+      "name": "PUT - Confirmar Entrega - \u00c9xito",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8080/api/pedidos/entregar",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "pedidos",
+            "entregar"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"pedidoId\": 3,\n    \"usuarioResponsableId\": 1,\n    \"fechaEntregaConfirmada\": \"2025-06-11\",\n    \"tipoComprobante\": \"PDF\",\n    \"contenido\": \"COMPROBANTE-ENTREGA-PDF\"\n}"
+        }
+      }
+    },
+    {
+      "name": "GET - Mostrar Pedidos",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8080/api/pedidos",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "pedidos"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET - Pedidos por Estado",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8080/api/pedidos?estadoId=2",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "pedidos"
+          ],
+          "query": [
+            {
+              "key": "estadoId",
+              "value": "2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET - Pedidos por Estado y Operario",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8080/api/pedidos?estadoId=2&operarioId=2",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "pedidos"
+          ],
+          "query": [
+            {
+              "key": "estadoId",
+              "value": "2"
+            },
+            {
+              "key": "operarioId",
+              "value": "2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET - Pedidos a Entregar por Rango",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8080/api/pedidos/entregas?desde=2025-06-01&hasta=2025-06-30",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "pedidos",
+            "entregas"
+          ],
+          "query": [
+            {
+              "key": "desde",
+              "value": "2025-06-01"
+            },
+            {
+              "key": "hasta",
+              "value": "2025-06-30"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET - Pedidos Pr\u00f3ximos a Vencer",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8080/api/pedidos/vencimientos?dias=3",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "pedidos",
+            "vencimientos"
+          ],
+          "query": [
+            {
+              "key": "dias",
+              "value": "3"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

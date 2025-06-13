@@ -1,0 +1,623 @@
+package pe.edu.uni.mecafab.repository;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.model.Pedido;
+
+import java.sql.Date;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+@Repository
+@RequiredArgsConstructor
+public class PedidoRepository {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public void insertarPedido(PedidoRequestDTO dto) {
+        String sql = """
+            INSERT INTO Pedido (
+                codigo, descripcion_producto, tipo_trabajo, fecha_solicitud, 
+                fecha_entrega_comprometida, estado_id, cliente_id, 
+                operario_asignado_id, usuario_creador_id, fecha_registro, es_entregado
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), 0)
+        """;
+        String codigo = "PED-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        jdbcTemplate.update(sql,
+                codigo,
+                dto.getDescripcionProducto(),
+                dto.getTipoTrabajo(),
+                dto.getFechaSolicitud(),
+                dto.getFechaEntregaComprometida(),
+                dto.getEstadoId(),
+                dto.getClienteId(),
+                dto.getOperarioAsignadoId(),
+                dto.getUsuarioCreadorId()
+        );
+    }
+
+    public void actualizarAsignacion(AsignacionPedidoDTO dto) {
+        String sql = """
+            UPDATE Pedido
+            SET estado_id = ?, operario_asignado_id = ?, fecha_modificacion = GETDATE()
+            WHERE id = ?
+        """;
+        jdbcTemplate.update(sql,
+                dto.getNuevoEstadoId(),
+                dto.getOperarioId(),
+                dto.getPedidoId()
+        );
+    }
+
+    public boolean actualizarEstadoSiEsDiferente(CambioEstadoDTO dto) {
+        String getEstadoSql = "SELECT estado_id FROM Pedido WHERE id = ?";
+        Integer estadoActual = jdbcTemplate.queryForObject(getEstadoSql, Integer.class, dto.getPedidoId());
+
+        if (estadoActual != null && estadoActual.equals(dto.getNuevoEstadoId())) {
+            return false;
+        }
+
+        String updateSql = """
+        UPDATE Pedido
+        SET estado_id = ?, fecha_modificacion = GETDATE()
+        WHERE id = ?
+    """;
+        jdbcTemplate.update(updateSql,
+                dto.getNuevoEstadoId(),
+                dto.getPedidoId()
+        );
+
+        insertarHistorialEstadoCompleto(dto, estadoActual);
+        return true;
+    }
+
+    public void insertarHistorialEstadoCompleto(CambioEstadoDTO dto, Integer estadoAnteriorId) {
+        String sql = """
+            INSERT INTO HistorialEstadoPedido (pedido_id, estado_anterior_id, estado_nuevo_id, usuario_id, fecha_cambio)
+            VALUES (?, ?, ?, ?, GETDATE())
+        """;
+        jdbcTemplate.update(sql,
+                dto.getPedidoId(),
+                estadoAnteriorId,
+                dto.getNuevoEstadoId(),
+                dto.getUsuarioResponsableId()
+        );
+    }
+
+    public void actualizarEntrega(ConfirmacionEntregaDTO dto) {
+        String sql = """
+            UPDATE Pedido
+            SET estado_id = (SELECT id FROM EstadoPedido WHERE nombre = 'Entregado'),
+                es_entregado = 1,
+                fecha_entrega_confirmada = ?,
+                fecha_entrega_real = GETDATE(),
+                fecha_modificacion = GETDATE()
+            WHERE id = ?
+        """;
+        jdbcTemplate.update(sql,
+                dto.getFechaEntregaConfirmada() != null ? Date.valueOf(dto.getFechaEntregaConfirmada()) : null,
+                dto.getPedidoId()
+        );
+    }
+
+    public void insertarComprobante(ConfirmacionEntregaDTO dto) {
+        String sql = """
+            INSERT INTO ComprobanteEntrega (pedido_id, fecha_generacion, contenido, tipo, usuario_id)
+            VALUES (?, GETDATE(), ?, ?, ?)
+        """;
+        jdbcTemplate.update(sql,
+                dto.getPedidoId(),
+                dto.getContenido(),
+                dto.getTipoComprobante(),
+                dto.getUsuarioResponsableId()
+        );
+    }
+
+    public List<Pedido> buscarPedidos(Integer estadoId, Integer operarioId, Integer clienteId) {
+        StringBuilder sql = new StringBuilder("SELECT * FROM Pedido WHERE 1=1");
+        List<Object> params = new ArrayList<>();
+
+        if (estadoId != null) {
+            sql.append(" AND estado_id = ?");
+            params.add(estadoId);
+        }
+
+        if (operarioId != null) {
+            sql.append(" AND operario_asignado_id = ?");
+            params.add(operarioId);
+        }
+
+        if (clienteId != null) {
+            sql.append(" AND cliente_id = ?");
+            params.add(clienteId);
+        }
+
+        return jdbcTemplate.query(sql.toString(), BeanPropertyRowMapper.newInstance(Pedido.class), params.toArray());
+    }
+
+    public List<Pedido> buscarEntregasPorRango(LocalDate desde, LocalDate hasta) {
+        String sql = "SELECT * FROM Pedido WHERE fecha_entrega_real BETWEEN ? AND ?";
+        return jdbcTemplate.query(sql,
+                BeanPropertyRowMapper.newInstance(Pedido.class),
+                desde, hasta
+        );
+    }
+
+    public List<Pedido> buscarPedidosPorVencer(int dias) {
+        String sql = "SELECT * FROM Pedido " +
+                "WHERE es_entregado = 0 " +
+                "AND fecha_entrega_comprometida BETWEEN GETDATE() AND DATEADD(DAY, ?, GETDATE())";
+        return jdbcTemplate.query(sql,
+                BeanPropertyRowMapper.newInstance(Pedido.class),
+                dias
+        );
+    }
+}
+
+
+package pe.edu.uni.mecafab.service;
+
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.model.Pedido;
+
+import java.time.LocalDate;
+import java.util.List;
+
+public interface PedidoService {
+    void registrarPedido(PedidoRequestDTO dto);
+    void asignarPedido(AsignacionPedidoDTO dto);
+    void cambiarEstado(CambioEstadoDTO dto);
+    void confirmarEntrega(ConfirmacionEntregaDTO dto);
+    List<Pedido> listarPedidos(Integer estadoId, Integer operarioId, Integer clienteId);
+    List<Pedido> obtenerEntregasPorRango(LocalDate desde, LocalDate hasta);
+    List<Pedido> obtenerPedidosPorVencer(int dias);
+}
+
+
+package pe.edu.uni.mecafab.service;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.exception.EntregaYaConfirmadaException;
+import pe.edu.uni.mecafab.exception.EstadoYaAsignadoException;
+import pe.edu.uni.mecafab.exception.PedidoNoEncontradoException;
+import pe.edu.uni.mecafab.model.Pedido;
+import pe.edu.uni.mecafab.repository.PedidoRepository;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class PedidoServiceImpl implements PedidoService {
+
+    private final PedidoRepository pedidoRepository;
+
+    @Override
+    public void registrarPedido(PedidoRequestDTO dto) {
+        pedidoRepository.insertarPedido(dto);
+    }
+
+    @Override
+    public void asignarPedido(AsignacionPedidoDTO dto) {
+        validarExistenciaPedido(dto.getPedidoId());
+        pedidoRepository.actualizarAsignacion(dto);
+    }
+
+    @Override
+    public void cambiarEstado(CambioEstadoDTO dto) {
+        validarExistenciaPedido(dto.getPedidoId());
+        boolean cambiado = pedidoRepository.actualizarEstadoSiEsDiferente(dto);
+        if (!cambiado) {
+            throw new EstadoYaAsignadoException();
+        }
+    }
+
+    @Override
+    public void confirmarEntrega(ConfirmacionEntregaDTO dto) {
+        Pedido pedido = obtenerPedido(dto.getPedidoId());
+        if (pedido.isEsEntregado()) {
+            throw new EntregaYaConfirmadaException(dto.getPedidoId());
+        }
+        pedidoRepository.actualizarEntrega(dto);
+        pedidoRepository.insertarComprobante(dto);
+    }
+
+    @Override
+    public List<Pedido> listarPedidos(Integer estadoId, Integer operarioId, Integer clienteId) {
+        return pedidoRepository.buscarPedidos(estadoId, operarioId, clienteId);
+    }
+
+    @Override
+    public List<Pedido> obtenerEntregasPorRango(LocalDate desde, LocalDate hasta) {
+        return pedidoRepository.buscarEntregasPorRango(desde, hasta);
+    }
+
+    @Override
+    public List<Pedido> obtenerPedidosPorVencer(int dias) {
+        return pedidoRepository.buscarPedidosPorVencer(dias);
+    }
+
+    private Pedido obtenerPedido(Integer id) {
+        return pedidoRepository.buscarPedidos(id, null, null).stream()
+                .findFirst()
+                .orElseThrow(() -> new PedidoNoEncontradoException(id));
+    }
+
+    private void validarExistenciaPedido(Integer id) {
+        if (pedidoRepository.buscarPedidos(id, null, null).isEmpty()) {
+            throw new PedidoNoEncontradoException(id);
+        }
+    }
+}
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Cliente {
+    private Integer id;
+    private String nombreRazonSocial;
+    private String documento;
+    private String telefono;
+    private String correo;
+    private String direccion;
+}
+
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class EstadoPedido {
+    private Integer id;
+    private String nombre;
+    private Integer ordenLogico;
+    private boolean esFinal;
+}
+
+
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Pedido {
+    private Integer id;
+    private String codigo;
+    private String descripcionProducto;
+    private String tipoTrabajo;
+    private LocalDate fechaSolicitud;
+    private LocalDate fechaEntregaComprometida;
+    private LocalDate fechaEntregaReal;
+    private Integer estadoId;
+    private Integer clienteId;
+    private Integer operarioAsignadoId;
+    private Integer usuarioCreadorId;
+    private LocalDate fechaEntregaConfirmada;
+    private boolean esEntregado;
+}
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Usuario {
+    private Integer id;
+    private String nombre;
+    private String correo;
+    private String clave;
+    private Integer rolId;
+    private boolean estado;
+}
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class AsignacionPedidoDTO {
+
+    @NotNull
+    private Integer pedidoId;
+
+    @NotNull
+    private Integer operarioId;
+
+    @NotNull
+    private Integer nuevoEstadoId;
+}
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class CambioEstadoDTO {
+
+    @NotNull
+    private Integer pedidoId;
+
+    @NotNull
+    private Integer nuevoEstadoId;
+
+    @NotNull
+    private Integer usuarioResponsableId;
+}
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+import java.time.LocalDate;
+
+@Data
+public class ConfirmacionEntregaDTO {
+
+    @NotNull
+    private Integer pedidoId;
+
+    @NotNull
+    private Integer usuarioResponsableId;
+
+    private LocalDate fechaEntregaConfirmada;
+
+    private String tipoComprobante;
+
+    private String contenido;
+}
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.FutureOrPresent;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+import java.time.LocalDate;
+
+@Data
+public class PedidoRequestDTO {
+
+    @NotBlank
+    private String descripcionProducto;
+
+    @NotBlank
+    private String tipoTrabajo;
+
+    @NotNull
+    @FutureOrPresent
+    private LocalDate fechaSolicitud;
+
+    @NotNull
+    @Future
+    private LocalDate fechaEntregaComprometida;
+
+    @NotNull
+    private Integer estadoId;
+
+    @NotNull
+    private Integer clienteId;
+
+    @NotNull
+    private Integer usuarioCreadorId;
+
+    private Integer operarioAsignadoId;
+}
+
+package pe.edu.uni.mecafab.controller;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.model.Pedido;
+import pe.edu.uni.mecafab.service.PedidoService;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/pedidos")
+@RequiredArgsConstructor
+public class PedidoController {
+
+    private final PedidoService pedidoService;
+
+    @PostMapping
+    public ResponseEntity<?> registrarPedido(@Valid @RequestBody PedidoRequestDTO dto) {
+        pedidoService.registrarPedido(dto);
+        return ResponseEntity.ok("Pedido registrado correctamente.");
+    }
+
+    @PutMapping("/asignar")
+    public ResponseEntity<?> asignarPedido(@Valid @RequestBody AsignacionPedidoDTO dto) {
+        pedidoService.asignarPedido(dto);
+        return ResponseEntity.ok("Pedido asignado y estado actualizado.");
+    }
+
+    @PutMapping("/cambiar-estado")
+    public ResponseEntity<?> cambiarEstado(@Valid @RequestBody CambioEstadoDTO dto) {
+        pedidoService.cambiarEstado(dto);
+        return ResponseEntity.ok("Estado actualizado y registrado en historial.");
+    }
+
+    @PutMapping("/entregar")
+    public ResponseEntity<?> confirmarEntrega(@Valid @RequestBody ConfirmacionEntregaDTO dto) {
+        pedidoService.confirmarEntrega(dto);
+        return ResponseEntity.ok("Entrega registrada y comprobante generado.");
+    }
+
+    @GetMapping
+    public List<Pedido> listarPedidos(
+            @RequestParam(required = false) Integer estadoId,
+            @RequestParam(required = false) Integer operarioId,
+            @RequestParam(required = false) Integer clienteId
+    ) {
+        return pedidoService.listarPedidos(estadoId, operarioId, clienteId);
+    }
+
+    @GetMapping("/entregas")
+    public List<Pedido> entregasPorRango(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta
+    ) {
+        return pedidoService.obtenerEntregasPorRango(desde, hasta);
+    }
+
+    @GetMapping("/vencimientos")
+    public List<Pedido> pedidosProximosAVencer(
+            @RequestParam(defaultValue = "2") int dias
+    ) {
+        return pedidoService.obtenerPedidosPorVencer(dias);
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public class ClienteNoEncontradoException extends EntidadNoEncontradaException {
+    public ClienteNoEncontradoException(Integer id) {
+        super("No se encontró el cliente con ID: " + id);
+    }
+}
+package pe.edu.uni.mecafab.exception;
+
+public abstract class EntidadNoEncontradaException extends RuntimeException {
+    public EntidadNoEncontradaException(String mensaje) {
+        super(mensaje);
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public class EntregaYaConfirmadaException extends ReglaNegocioException {
+    public EntregaYaConfirmadaException(Integer id) {
+        super("La entrega del pedido con ID " + id + " ya fue confirmada.");
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public class EstadoYaAsignadoException extends ReglaNegocioException {
+    public EstadoYaAsignadoException() {
+        super("El estado que se intenta asignar ya está aplicado al pedido.");
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(EntidadNoEncontradaException.class)
+    public ResponseEntity<?> manejarEntidadNoEncontrada(EntidadNoEncontradaException ex) {
+        return crearRespuesta(ex.getMessage(), "NOT_FOUND", HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(ReglaNegocioException.class)
+    public ResponseEntity<?> manejarReglaNegocio(ReglaNegocioException ex) {
+        return crearRespuesta(ex.getMessage(), "BUSINESS_ERROR", HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<?> manejarValidaciones(MethodArgumentNotValidException ex) {
+        String errores = ex.getBindingResult().getFieldErrors().stream()
+                .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        return crearRespuesta(errores, "VALIDATION_ERROR", HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<?> manejarErroresGenerales(Exception ex) {
+        return crearRespuesta("Error interno del servidor", "INTERNAL_ERROR", HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    private ResponseEntity<Map<String, Object>> crearRespuesta(String mensaje, String codigo, HttpStatus status) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("mensaje", mensaje);
+        body.put("codigo", codigo);
+        return new ResponseEntity<>(body, status);
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public class OperarioNoEncontradoException extends EntidadNoEncontradaException {
+    public OperarioNoEncontradoException(Integer id) {
+        super("No se encontró el operario con ID: " + id);
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public class PedidoNoEncontradoException extends EntidadNoEncontradaException {
+    public PedidoNoEncontradoException(Integer id) {
+        super("No se encontró el pedido con ID: " + id);
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public abstract class ReglaNegocioException extends RuntimeException {
+    public ReglaNegocioException(String mensaje) {
+        super(mensaje);
+    }
+}
