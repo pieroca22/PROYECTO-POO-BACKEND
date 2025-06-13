@@ -1,5 +1,3 @@
-Ignorar mecafab0. es la versión inicial (lleno de bugs y errores)
-
 - PARA LA DATABASE:
 vayan a la carpeta y entren versión final y ejecuten los scripts(NO TENER NINGUNA BASE ANTERIOR LLAMADA IGUAL)
 
