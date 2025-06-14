@@ -1,16 +1,379 @@
+package pe.edu.uni.mecafab.controller;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.model.Pedido;
+import pe.edu.uni.mecafab.service.PedidoService;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/pedidos")
+@RequiredArgsConstructor
+public class PedidoController {
+
+    private final PedidoService pedidoService;
+
+    @PostMapping
+    public ResponseEntity<?> registrarPedido(@Valid @RequestBody PedidoRequestDTO dto) {
+        pedidoService.registrarPedido(dto);
+        return ResponseEntity.ok("Pedido registrado correctamente.");
+    }
+
+    @PutMapping("/asignar")
+    public ResponseEntity<?> asignarPedido(@Valid @RequestBody AsignacionPedidoDTO dto) {
+        pedidoService.asignarPedido(dto);
+        return ResponseEntity.ok("Pedido asignado y estado actualizado.");
+    }
+
+    @PutMapping("/cambiar-estado")
+    public ResponseEntity<?> cambiarEstado(@Valid @RequestBody CambioEstadoDTO dto) {
+        pedidoService.cambiarEstado(dto);
+        return ResponseEntity.ok("Estado actualizado y registrado en historial.");
+    }
+
+    @PutMapping("/entregar")
+    public ResponseEntity<?> confirmarEntrega(@Valid @RequestBody ConfirmacionEntregaDTO dto) {
+        pedidoService.confirmarEntrega(dto);
+        return ResponseEntity.ok("Entrega registrada y comprobante generado.");
+    }
+
+    @GetMapping
+    public List<Pedido> listarPedidos(
+            @RequestParam(required = false) Integer estadoId,
+            @RequestParam(required = false) Integer operarioId,
+            @RequestParam(required = false) Integer clienteId
+    ) {
+        return pedidoService.listarPedidos(estadoId, operarioId, clienteId);
+    }
+
+    @GetMapping("/entregas")
+    public List<Pedido> entregasPorRango(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta
+    ) {
+        return pedidoService.obtenerEntregasPorRango(desde, hasta);
+    }
+
+    @GetMapping("/vencimientos")
+    public List<Pedido> pedidosProximosAVencer(
+            @RequestParam(defaultValue = "2") int dias
+    ) {
+        return pedidoService.obtenerPedidosPorVencer(dias);
+    }
+}
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class AsignacionPedidoDTO {
+
+    @NotNull
+    private Integer pedidoId;
+
+    @NotNull
+    private Integer operarioId;
+
+    @NotNull
+    private Integer nuevoEstadoId;
+}
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class CambioEstadoDTO {
+
+    @NotNull
+    private Integer pedidoId;
+
+    @NotNull
+    private Integer nuevoEstadoId;
+
+    @NotNull
+    private Integer usuarioResponsableId;
+}
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+import java.time.LocalDate;
+
+@Data
+public class ConfirmacionEntregaDTO {
+
+    @NotNull
+    private Integer pedidoId;
+
+    @NotNull
+    private Integer usuarioResponsableId;
+
+    @NotNull
+    private LocalDate fechaEntregaConfirmada;
+
+    @NotBlank
+    private String tipoComprobante;
+
+    @NotBlank
+    private String contenido;
+}
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.*;
+import lombok.Data;
+
+import java.time.LocalDate;
+
+@Data
+public class PedidoRequestDTO {
+
+    @NotBlank
+    private String descripcionProducto;
+
+    @NotBlank
+    private String tipoTrabajo;
+
+    @NotNull
+    @PastOrPresent
+    private LocalDate fechaSolicitud;
+
+    @NotNull
+    @Future
+    private LocalDate fechaEntregaComprometida;
+
+    @NotNull
+    private Integer estadoId;
+
+    @NotNull
+    private Integer clienteId;
+
+    @NotNull
+    private Integer usuarioCreadorId;
+
+    private Integer operarioAsignadoId;
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public class ClienteNoEncontradoException extends EntidadNoEncontradaException {
+    public ClienteNoEncontradoException(Integer id) {
+        super("No se encontró el cliente con ID: " + id);
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public abstract class EntidadNoEncontradaException extends RuntimeException {
+    public EntidadNoEncontradaException(String mensaje) {
+        super(mensaje);
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public class EstadoYaAsignadoException extends ReglaNegocioException {
+    public EstadoYaAsignadoException() {
+        super("El estado que se intenta asignar ya está aplicado al pedido.");
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public class EntregaYaConfirmadaException extends ReglaNegocioException {
+    public EntregaYaConfirmadaException(Integer id) {
+        super("La entrega del pedido con ID " + id + " ya fue confirmada.");
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(EntidadNoEncontradaException.class)
+    public ResponseEntity<?> manejarEntidadNoEncontrada(EntidadNoEncontradaException ex) {
+        return crearRespuesta(ex.getMessage(), "NOT_FOUND", HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(ReglaNegocioException.class)
+    public ResponseEntity<?> manejarReglaNegocio(ReglaNegocioException ex) {
+        return crearRespuesta(ex.getMessage(), "BUSINESS_ERROR", HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<?> manejarValidaciones(MethodArgumentNotValidException ex) {
+        String errores = ex.getBindingResult().getFieldErrors().stream()
+                .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        return crearRespuesta(errores, "VALIDATION_ERROR", HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<?> manejarErroresGenerales(Exception ex) {
+        return crearRespuesta("Error interno del servidor", "INTERNAL_ERROR", HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    private ResponseEntity<Map<String, Object>> crearRespuesta(String mensaje, String codigo, HttpStatus status) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("mensaje", mensaje);
+        body.put("codigo", codigo);
+        return new ResponseEntity<>(body, status);
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public class OperarioNoEncontradoException extends EntidadNoEncontradaException {
+    public OperarioNoEncontradoException(Integer id) {
+        super("No se encontró el operario con ID: " + id);
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public class PedidoNoEncontradoException extends EntidadNoEncontradaException {
+    public PedidoNoEncontradoException(Integer id) {
+        super("No se encontró el pedido con ID: " + id);
+    }
+}
+
+package pe.edu.uni.mecafab.exception;
+
+public abstract class ReglaNegocioException extends RuntimeException {
+    public ReglaNegocioException(String mensaje) {
+        super(mensaje);
+    }
+}
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Cliente {
+    private Integer id;
+    private String nombreRazonSocial;
+    private String documento;
+    private String telefono;
+    private String correo;
+    private String direccion;
+}
+
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class EstadoPedido {
+    private Integer id;
+    private String nombre;
+    private Integer ordenLogico;
+    private boolean esFinal;
+}
+
+
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Pedido {
+    private Integer id;
+    private String codigo;
+    private String descripcionProducto;
+    private String tipoTrabajo;
+    private LocalDate fechaSolicitud;
+    private LocalDate fechaEntregaComprometida;
+    private LocalDate fechaEntregaReal;
+    private Integer estadoId;
+    private Integer clienteId;
+    private Integer operarioAsignadoId;
+    private Integer usuarioCreadorId;
+    private LocalDate fechaEntregaConfirmada;
+    private boolean esEntregado;
+}
+
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Usuario {
+    private Integer id;
+    private String nombre;
+    private String correo;
+    private String clave;
+    private Integer rolId;
+    private boolean estado;
+}
+
+
 package pe.edu.uni.mecafab.repository;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
 import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
 import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
 import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
 import pe.edu.uni.mecafab.model.Pedido;
+import pe.edu.uni.mecafab.util.TransCodeUtil;
 
-import java.sql.Date;
+import java.sql.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,25 +386,43 @@ public class PedidoRepository {
     private final JdbcTemplate jdbcTemplate;
 
     public void insertarPedido(PedidoRequestDTO dto) {
+        // 1. SQL sin el código
         String sql = """
-            INSERT INTO Pedido (
-                codigo, descripcion_producto, tipo_trabajo, fecha_solicitud, 
-                fecha_entrega_comprometida, estado_id, cliente_id, 
-                operario_asignado_id, usuario_creador_id, fecha_registro, es_entregado
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), 0)
-        """;
-        String codigo = "PED-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        jdbcTemplate.update(sql,
-                codigo,
-                dto.getDescripcionProducto(),
-                dto.getTipoTrabajo(),
-                dto.getFechaSolicitud(),
-                dto.getFechaEntregaComprometida(),
-                dto.getEstadoId(),
-                dto.getClienteId(),
-                dto.getOperarioAsignadoId(),
-                dto.getUsuarioCreadorId()
-        );
+        INSERT INTO Pedido (
+            descripcion_producto, tipo_trabajo, fecha_solicitud,
+            fecha_entrega_comprometida, estado_id, cliente_id,
+            operario_asignado_id, usuario_creador_id, fecha_registro, es_entregado
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), 0)
+    """;
+
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+
+        // 2. Ejecuta el INSERT y captura el ID generado
+        jdbcTemplate.update((Connection con) -> {
+            PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+            ps.setString(1, dto.getDescripcionProducto());
+            ps.setString(2, dto.getTipoTrabajo());
+            ps.setObject(3, dto.getFechaSolicitud());
+            ps.setObject(4, dto.getFechaEntregaComprometida());
+            ps.setInt(5, dto.getEstadoId());
+            ps.setInt(6, dto.getClienteId());
+            if(dto.getOperarioAsignadoId()!=null)
+                ps.setInt(7, dto.getOperarioAsignadoId());
+            else
+                ps.setNull(7, Types.INTEGER);
+            ps.setInt(8, dto.getUsuarioCreadorId());
+            return ps;
+        }, keyHolder);
+
+        // 3. Recupera el ID
+        Integer nuevoId = keyHolder.getKey().intValue();
+
+        // 4. Genera el código con tu utilitario
+        String codigo = TransCodeUtil.transCodePedido(nuevoId);
+
+        // 5. Actualiza sólo la columna 'codigo'
+        String updateSql = "UPDATE Pedido SET codigo = ? WHERE id = ?";
+        jdbcTemplate.update(updateSql, codigo, nuevoId);
     }
 
     public void actualizarAsignacion(AsignacionPedidoDTO dto) {
@@ -160,6 +541,25 @@ public class PedidoRepository {
                 dias
         );
     }
+
+    // SOLUCIONA Asignacion
+    public boolean existePedidoPorId(Integer id) {
+        String sql = "SELECT COUNT(1) FROM Pedido WHERE id = ?";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, id);
+        return count != null && count > 0;
+    }
+
+    // SOLUCIONA Comprobante y entrega
+    public Pedido obtenerPorId(Integer id) {
+        String sql = "SELECT * FROM Pedido WHERE id = ?";
+        return jdbcTemplate.queryForObject(
+                sql,
+                BeanPropertyRowMapper.newInstance(Pedido.class),
+                id
+        );
+    }
+
+
 }
 
 
@@ -189,6 +589,7 @@ package pe.edu.uni.mecafab.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
 import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
 import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
@@ -204,6 +605,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class PedidoServiceImpl implements PedidoService {
 
     private final PedidoRepository pedidoRepository;
@@ -228,13 +630,31 @@ public class PedidoServiceImpl implements PedidoService {
         }
     }
 
+    // SOLUCIONA Comprobante y entrega
     @Override
     public void confirmarEntrega(ConfirmacionEntregaDTO dto) {
+        /* ERROR
         Pedido pedido = obtenerPedido(dto.getPedidoId());
         if (pedido.isEsEntregado()) {
             throw new EntregaYaConfirmadaException(dto.getPedidoId());
         }
         pedidoRepository.actualizarEntrega(dto);
+        pedidoRepository.insertarComprobante(dto);
+        */
+
+        // 1) Valida existencia
+        validarExistenciaPedido(dto.getPedidoId());
+
+        // 2) (Opcional) evita confirmarlo dos veces
+        Pedido pedido = pedidoRepository.obtenerPorId(dto.getPedidoId());
+        if (pedido.isEsEntregado()) {
+            throw new EntregaYaConfirmadaException(dto.getPedidoId());
+        }
+
+        // 3) Actualiza los campos de entrega
+        pedidoRepository.actualizarEntrega(dto);
+
+        // 4) Registra el comprobante
         pedidoRepository.insertarComprobante(dto);
     }
 
@@ -259,365 +679,41 @@ public class PedidoServiceImpl implements PedidoService {
                 .orElseThrow(() -> new PedidoNoEncontradoException(id));
     }
 
+    /*
     private void validarExistenciaPedido(Integer id) {
         if (pedidoRepository.buscarPedidos(id, null, null).isEmpty()) {
             throw new PedidoNoEncontradoException(id);
         }
     }
+    */
+
+    // SOLUCIONA Asignacion
+    private void validarExistenciaPedido(Integer id) {
+        if (!pedidoRepository.existePedidoPorId(id)) {
+            throw new PedidoNoEncontradoException(id);
+        }
+    }
+
 }
-
-package pe.edu.uni.mecafab.model;
-
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class Cliente {
-    private Integer id;
-    private String nombreRazonSocial;
-    private String documento;
-    private String telefono;
-    private String correo;
-    private String direccion;
-}
-
-
-package pe.edu.uni.mecafab.model;
-
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class EstadoPedido {
-    private Integer id;
-    private String nombre;
-    private Integer ordenLogico;
-    private boolean esFinal;
-}
-
-
-
-package pe.edu.uni.mecafab.model;
-
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+package pe.edu.uni.mecafab.util;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class Pedido {
-    private Integer id;
-    private String codigo;
-    private String descripcionProducto;
-    private String tipoTrabajo;
-    private LocalDate fechaSolicitud;
-    private LocalDate fechaEntregaComprometida;
-    private LocalDate fechaEntregaReal;
-    private Integer estadoId;
-    private Integer clienteId;
-    private Integer operarioAsignadoId;
-    private Integer usuarioCreadorId;
-    private LocalDate fechaEntregaConfirmada;
-    private boolean esEntregado;
-}
+public class TransCodeUtil {
+    // Formato año+mes, e.g. "202506"
+    private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyyMM");
 
-package pe.edu.uni.mecafab.model;
-
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class Usuario {
-    private Integer id;
-    private String nombre;
-    private String correo;
-    private String clave;
-    private Integer rolId;
-    private boolean estado;
-}
-
-package pe.edu.uni.mecafab.dto;
-
-import jakarta.validation.constraints.NotNull;
-import lombok.Data;
-
-@Data
-public class AsignacionPedidoDTO {
-
-    @NotNull
-    private Integer pedidoId;
-
-    @NotNull
-    private Integer operarioId;
-
-    @NotNull
-    private Integer nuevoEstadoId;
-}
-
-package pe.edu.uni.mecafab.dto;
-
-import jakarta.validation.constraints.NotNull;
-import lombok.Data;
-
-@Data
-public class CambioEstadoDTO {
-
-    @NotNull
-    private Integer pedidoId;
-
-    @NotNull
-    private Integer nuevoEstadoId;
-
-    @NotNull
-    private Integer usuarioResponsableId;
-}
-
-package pe.edu.uni.mecafab.dto;
-
-import jakarta.validation.constraints.NotNull;
-import lombok.Data;
-
-import java.time.LocalDate;
-
-@Data
-public class ConfirmacionEntregaDTO {
-
-    @NotNull
-    private Integer pedidoId;
-
-    @NotNull
-    private Integer usuarioResponsableId;
-
-    private LocalDate fechaEntregaConfirmada;
-
-    private String tipoComprobante;
-
-    private String contenido;
-}
-
-package pe.edu.uni.mecafab.dto;
-
-import jakarta.validation.constraints.Future;
-import jakarta.validation.constraints.FutureOrPresent;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import lombok.Data;
-
-import java.time.LocalDate;
-
-@Data
-public class PedidoRequestDTO {
-
-    @NotBlank
-    private String descripcionProducto;
-
-    @NotBlank
-    private String tipoTrabajo;
-
-    @NotNull
-    @FutureOrPresent
-    private LocalDate fechaSolicitud;
-
-    @NotNull
-    @Future
-    private LocalDate fechaEntregaComprometida;
-
-    @NotNull
-    private Integer estadoId;
-
-    @NotNull
-    private Integer clienteId;
-
-    @NotNull
-    private Integer usuarioCreadorId;
-
-    private Integer operarioAsignadoId;
-}
-
-package pe.edu.uni.mecafab.controller;
-
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
-import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
-import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
-import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
-import pe.edu.uni.mecafab.model.Pedido;
-import pe.edu.uni.mecafab.service.PedidoService;
-
-import java.time.LocalDate;
-import java.util.List;
-
-@RestController
-@RequestMapping("/api/pedidos")
-@RequiredArgsConstructor
-public class PedidoController {
-
-    private final PedidoService pedidoService;
-
-    @PostMapping
-    public ResponseEntity<?> registrarPedido(@Valid @RequestBody PedidoRequestDTO dto) {
-        pedidoService.registrarPedido(dto);
-        return ResponseEntity.ok("Pedido registrado correctamente.");
+    /**
+     * Genera un código tipo "PED-202506-001" a partir del ID numérico.
+     * @param id el ID secuencial del cliente
+     * @return el código formateado
+     */
+    public static String transCodePedido(int id) {
+        String ym = LocalDate.now().format(YM);
+        // %03d ⇒ 3 dígitos, ceros a la izquierda
+        return String.format("PED-%s-%03d", ym, id);
     }
 
-    @PutMapping("/asignar")
-    public ResponseEntity<?> asignarPedido(@Valid @RequestBody AsignacionPedidoDTO dto) {
-        pedidoService.asignarPedido(dto);
-        return ResponseEntity.ok("Pedido asignado y estado actualizado.");
-    }
-
-    @PutMapping("/cambiar-estado")
-    public ResponseEntity<?> cambiarEstado(@Valid @RequestBody CambioEstadoDTO dto) {
-        pedidoService.cambiarEstado(dto);
-        return ResponseEntity.ok("Estado actualizado y registrado en historial.");
-    }
-
-    @PutMapping("/entregar")
-    public ResponseEntity<?> confirmarEntrega(@Valid @RequestBody ConfirmacionEntregaDTO dto) {
-        pedidoService.confirmarEntrega(dto);
-        return ResponseEntity.ok("Entrega registrada y comprobante generado.");
-    }
-
-    @GetMapping
-    public List<Pedido> listarPedidos(
-            @RequestParam(required = false) Integer estadoId,
-            @RequestParam(required = false) Integer operarioId,
-            @RequestParam(required = false) Integer clienteId
-    ) {
-        return pedidoService.listarPedidos(estadoId, operarioId, clienteId);
-    }
-
-    @GetMapping("/entregas")
-    public List<Pedido> entregasPorRango(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta
-    ) {
-        return pedidoService.obtenerEntregasPorRango(desde, hasta);
-    }
-
-    @GetMapping("/vencimientos")
-    public List<Pedido> pedidosProximosAVencer(
-            @RequestParam(defaultValue = "2") int dias
-    ) {
-        return pedidoService.obtenerPedidosPorVencer(dias);
-    }
-}
-
-package pe.edu.uni.mecafab.exception;
-
-public class ClienteNoEncontradoException extends EntidadNoEncontradaException {
-    public ClienteNoEncontradoException(Integer id) {
-        super("No se encontró el cliente con ID: " + id);
-    }
-}
-package pe.edu.uni.mecafab.exception;
-
-public abstract class EntidadNoEncontradaException extends RuntimeException {
-    public EntidadNoEncontradaException(String mensaje) {
-        super(mensaje);
-    }
-}
-
-package pe.edu.uni.mecafab.exception;
-
-public class EntregaYaConfirmadaException extends ReglaNegocioException {
-    public EntregaYaConfirmadaException(Integer id) {
-        super("La entrega del pedido con ID " + id + " ya fue confirmada.");
-    }
-}
-
-package pe.edu.uni.mecafab.exception;
-
-public class EstadoYaAsignadoException extends ReglaNegocioException {
-    public EstadoYaAsignadoException() {
-        super("El estado que se intenta asignar ya está aplicado al pedido.");
-    }
-}
-
-package pe.edu.uni.mecafab.exception;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-@RestControllerAdvice
-public class GlobalExceptionHandler {
-
-    @ExceptionHandler(EntidadNoEncontradaException.class)
-    public ResponseEntity<?> manejarEntidadNoEncontrada(EntidadNoEncontradaException ex) {
-        return crearRespuesta(ex.getMessage(), "NOT_FOUND", HttpStatus.NOT_FOUND);
-    }
-
-    @ExceptionHandler(ReglaNegocioException.class)
-    public ResponseEntity<?> manejarReglaNegocio(ReglaNegocioException ex) {
-        return crearRespuesta(ex.getMessage(), "BUSINESS_ERROR", HttpStatus.BAD_REQUEST);
-    }
-
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<?> manejarValidaciones(MethodArgumentNotValidException ex) {
-        String errores = ex.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .collect(Collectors.joining("; "));
-        return crearRespuesta(errores, "VALIDATION_ERROR", HttpStatus.BAD_REQUEST);
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<?> manejarErroresGenerales(Exception ex) {
-        return crearRespuesta("Error interno del servidor", "INTERNAL_ERROR", HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-
-    private ResponseEntity<Map<String, Object>> crearRespuesta(String mensaje, String codigo, HttpStatus status) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("timestamp", LocalDateTime.now());
-        body.put("mensaje", mensaje);
-        body.put("codigo", codigo);
-        return new ResponseEntity<>(body, status);
-    }
-}
-
-package pe.edu.uni.mecafab.exception;
-
-public class OperarioNoEncontradoException extends EntidadNoEncontradaException {
-    public OperarioNoEncontradoException(Integer id) {
-        super("No se encontró el operario con ID: " + id);
-    }
-}
-
-package pe.edu.uni.mecafab.exception;
-
-public class PedidoNoEncontradoException extends EntidadNoEncontradaException {
-    public PedidoNoEncontradoException(Integer id) {
-        super("No se encontró el pedido con ID: " + id);
-    }
-}
-
-package pe.edu.uni.mecafab.exception;
-
-public abstract class ReglaNegocioException extends RuntimeException {
-    public ReglaNegocioException(String mensaje) {
-        super(mensaje);
-    }
+    // ... otros métodos si los necesitas
 }

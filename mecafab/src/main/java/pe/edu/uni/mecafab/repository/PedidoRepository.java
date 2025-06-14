@@ -54,15 +54,6 @@ public class PedidoRepository {
             return ps;
         }, keyHolder);
 
-
-
-
-
-
-
-
-
-
         // 3. Recupera el ID
         Integer nuevoId = keyHolder.getKey().intValue();
 
