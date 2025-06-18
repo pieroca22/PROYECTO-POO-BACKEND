@@ -1,0 +1,64 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+header {
+    background: #004d99;
+    color: #fff;
+    padding: 1rem;
+}
+nav {
+    background: #e6e6e6;
+    padding: .5rem;
+    display: flex;
+    gap: .5rem;
+}
+nav button {
+    padding: .5rem 1rem;
+    border: none;
+    background: #004d99;
+    color: #fff;
+    cursor: pointer;
+}
+section {
+    display: none;
+    padding: 1rem;
+}
+section.active {
+    display: block;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+th, td {
+    border: 1px solid #ccc;
+    padding: .5rem;
+    text-align: left;
+}
+th {
+    background: #f0f0f0;
+}
+tr.alert td {
+    background: #ffe6e6;
+}
+form > div {
+    margin-bottom: .5rem;
+}
+label {
+    display: block;
+    font-weight: bold;
+}
+input, select {
+    width: 100%;
+    padding: .25rem;
+}
+button.submit {
+    background: #006600;
+    color: #fff;
+    padding: .5rem 1rem;
+    border: none;
+    cursor: pointer;
+}

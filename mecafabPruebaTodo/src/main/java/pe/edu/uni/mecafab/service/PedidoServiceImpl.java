@@ -1,6 +1,7 @@
 package pe.edu.uni.mecafab.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
@@ -37,6 +38,10 @@ public class PedidoServiceImpl implements PedidoService {
     }
 
     @Override
+    @Transactional
+    @PreAuthorize(
+            "hasRole('Jefe') or (hasRole('Operario') and @estadoService.isIntermediate(#dto.nuevoEstadoId))"
+    )
     public void cambiarEstado(CambioEstadoDTO dto) {
         validarExistenciaPedido(dto.getPedidoId());
         validarPedidoYaEntregado(dto.getPedidoId());
