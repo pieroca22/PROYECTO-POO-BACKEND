@@ -1,0 +1,98 @@
+<html>
+  <head>
+    <script
+      src="https://code.jquery.com/jquery-3.7.1.min.js"
+      integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+      crossorigin="anonymous"
+    ></script>
+    <script src="https://s3.amazonaws.com/builds.handlebarsjs.com/handlebars.min-v4.7.8.js"></script>
+  </head>
+  <body>
+    <div>
+      <table
+        id="resumen"
+        border="1"
+        style="width: 400px; margin: 0px auto"
+      ></table>
+    </div>
+    <div style="text-align: center; margin-top: 32px;">
+        <button type="button" onclick="window.print()">Imprimir</button>
+    </div>
+    <div style="text-align: center; margin-top: 32px;">
+      <a href="/listar.html">Volver atras</a>
+    </div>
+    <script id="resumen-template" type="text/application">
+      <tbody>
+        <tr>
+          <td colspan="2" style="text-align: center;">RESUMEN DE LA ORDEN</td>
+        </tr>
+        <tr>
+          <td>CODIGO:</td>
+          <td>{{ codigo }}</td>
+        </tr>
+        <tr>
+          <td>TIPO DE TRABAJO:</td>
+          <td>{{ tipoTrabajo }}</td>
+        </tr>
+        <tr>
+          <td>DESCRIPCION DEL PRODUCTO:</td>
+          <td>{{descripcionProducto}}</td>
+        </tr>
+        <tr>
+          <td>FECHA DE LA SOLICITUD:</td>
+          <td>{{ fechaSolicitud }}</td>
+        </tr>
+        <tr>
+          <td>FECHA DE CONFIRMACION:</td>
+          <td>{{fechaEntregaConfirmada}}</td>
+        </tr>
+        <tr>
+          <td>FECHA COMPROMETIDA:</td>
+          <td>{{ fechaEntregaComprometida }}</td>
+        </tr>
+      </tbody>
+    </script>
+    <script>
+      var BASE =
+        "https://yndycuezavrelllugbkc.supabase.co/functions/v1/fake/Q3YQ7D14XY6J";
+      const params = new URLSearchParams(window.location.search);
+
+      // Obtener un valor específico
+      const orden = params.get("orden");
+      $(document).ready(function () {
+        function draw(data) {
+          var one = data.find((e) => e.id + "" === orden + "");
+          if (one) {
+            var html = $("#resumen-template").text();
+            // compile the template
+            var template = Handlebars.compile(html);
+            // execute the compiled template and print the output to the console
+            var result = template(one);
+            $("#resumen").html(result);
+          } else {
+            alert("Lo sentimos no se encontro la orden.");
+          }
+        }
+        function load(params) {
+          $.ajax({
+            url: BASE + "/api/pedidos",
+            method: "GET",
+            contentType: "application/json",
+            data: params,
+            success: function (response) {
+              draw(response);
+            },
+            error: function (xhr, status, error) {
+              alert("Error al iniciar sesión: " + xhr.responseText);
+              console.error("Status:", status);
+              console.error("Error:", error);
+            },
+          });
+        }
+        setTimeout(function () {
+          load({});
+        }, 250);
+      });
+    </script>
+  </body>
+</html>

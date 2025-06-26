@@ -1,0 +1,961 @@
+package pe.edu.uni.mecafab.config;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.filter.CorsFilter;
+import pe.edu.uni.mecafab.filter.JwtFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.cors.CorsConfigurationSource;
+
+import java.util.List;
+
+@Configuration
+@EnableWebSecurity
+@RequiredArgsConstructor
+public class SecurityConfig {
+
+    private final JwtFilter jwtFilter;
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+                .csrf(csrf -> csrf.disable())
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // <<--- NECESARIO para CORS
+                        .requestMatchers("/auth/**", "/api/pedidos/health").permitAll()
+                        .anyRequest().authenticated()
+                )
+                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+        // Registro explícito de CORS
+        http.setSharedObject(CorsConfigurationSource.class, corsConfigurationSource());
+
+        return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of("*")); // acepta cualquier origen
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true); // si necesitas cookies o auth headers
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+
+    @Bean
+    public FilterRegistrationBean<CorsFilter> corsFilterRegistration() {
+        CorsFilter corsFilter = new CorsFilter(corsConfigurationSource());
+        FilterRegistrationBean<CorsFilter> registrationBean = new FilterRegistrationBean<>(corsFilter);
+        registrationBean.setOrder(-102); // Antes de Spring Security
+        return registrationBean;
+    }
+
+}
+
+package pe.edu.uni.mecafab.controller;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import pe.edu.uni.mecafab.dto.LoginRequestDTO;
+import pe.edu.uni.mecafab.dto.LoginResponseDTO;
+import pe.edu.uni.mecafab.model.Usuario;
+import pe.edu.uni.mecafab.service.AuthService;
+import pe.edu.uni.mecafab.util.JwtUtil;
+
+@RestController
+@RequestMapping("/auth")
+@RequiredArgsConstructor
+public class AuthController {
+
+    private final JwtUtil jwtUtil;
+    private final AuthService authService;
+
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponseDTO> login(@RequestBody LoginRequestDTO request) {
+        String username = request.getUsername();
+        String password = request.getPassword();
+
+        Usuario usuario = authService.validarUsuarioContrasena(username, password);
+
+        if (usuario != null) {
+            String token = jwtUtil.generateToken(username);
+            LoginResponseDTO loginResponseDTO =
+                    new LoginResponseDTO(usuario.getId(), token,
+                            usuario.getNombre(), usuario.getCorreo(), usuario.getRolId());
+
+            return ResponseEntity.ok(loginResponseDTO);
+        }
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(null);
+    }
+}
+
+package pe.edu.uni.mecafab.controller;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.model.Pedido;
+import pe.edu.uni.mecafab.service.PedidoService;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/pedidos")
+@RequiredArgsConstructor
+public class PedidoController {
+
+    private final PedidoService pedidoService;
+
+    @GetMapping("/health")
+    public ResponseEntity<String> healthCheck() {
+        return ResponseEntity.ok("OK");
+    }
+    @GetMapping("/seguro")
+    public ResponseEntity<String> seguroCheck() {
+        return ResponseEntity.ok("OK");
+    }
+
+    @PostMapping
+    public ResponseEntity<?> registrarPedido(@Valid @RequestBody PedidoRequestDTO dto) {
+        pedidoService.registrarPedido(dto);
+        return ResponseEntity.ok("Pedido registrado correctamente.");
+    }
+
+    @PutMapping("/asignar")
+    public ResponseEntity<?> asignarPedido(@Valid @RequestBody AsignacionPedidoDTO dto) {
+        pedidoService.asignarPedido(dto);
+        return ResponseEntity.ok("Pedido asignado y estado actualizado.");
+    }
+
+    @PutMapping("/cambiar-estado")
+    public ResponseEntity<?> cambiarEstado(@Valid @RequestBody CambioEstadoDTO dto) {
+        pedidoService.cambiarEstado(dto);
+        return ResponseEntity.ok("Estado actualizado y registrado en historial.");
+    }
+
+    @PutMapping("/entregar")
+    public ResponseEntity<?> confirmarEntrega(@Valid @RequestBody ConfirmacionEntregaDTO dto) {
+        pedidoService.confirmarEntrega(dto);
+        return ResponseEntity.ok("Entrega registrada y comprobante generado.");
+    }
+
+    @GetMapping
+    public List<Pedido> listarPedidos(
+            @RequestParam(required = false) Integer estadoId,
+            @RequestParam(required = false) Integer operarioId,
+            @RequestParam(required = false) Integer clienteId
+    ) {
+        return pedidoService.listarPedidos(estadoId, operarioId, clienteId);
+    }
+
+    @GetMapping("/entregas")
+    public List<Pedido> entregasPorRango(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta
+    ) {
+        return pedidoService.obtenerEntregasPorRango(desde, hasta);
+    }
+
+    @GetMapping("/vencimientos")
+    public List<Pedido> pedidosProximosAVencer(
+            @RequestParam(defaultValue = "2") int dias
+    ) {
+        return pedidoService.obtenerPedidosPorVencer(dias);
+    }
+}
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class AsignacionPedidoDTO {
+
+    @NotNull
+    private Integer pedidoId;
+
+    @NotNull
+    private Integer operarioId;
+
+    @NotNull
+    private Integer nuevoEstadoId;
+}
+
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class CambioEstadoDTO {
+
+    @NotNull
+    private Integer pedidoId;
+
+    @NotNull
+    private Integer nuevoEstadoId;
+
+    @NotNull
+    private Integer usuarioResponsableId;
+}
+
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+import java.time.LocalDate;
+
+@Data
+public class ConfirmacionEntregaDTO {
+
+    @NotNull
+    private Integer pedidoId;
+
+    @NotNull
+    private Integer usuarioResponsableId;
+
+    @NotNull
+    private LocalDate fechaEntregaConfirmada;
+
+    @NotBlank
+    private String tipoComprobante;
+
+    @NotBlank
+    private String contenido;
+}
+
+
+package pe.edu.uni.mecafab.dto;
+
+import lombok.Data;
+
+@Data
+public class LoginRequestDTO {
+    private String username;
+    private String password;
+}
+
+package pe.edu.uni.mecafab.dto;
+
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+
+@Data
+@AllArgsConstructor
+public class LoginResponseDTO {
+    private int user;
+    private String token;
+    private String nombre;
+    private String correo;
+    private int rol;
+}
+
+package pe.edu.uni.mecafab.dto;
+
+import jakarta.validation.constraints.*;
+import lombok.Data;
+
+import java.time.LocalDate;
+
+@Data
+public class PedidoRequestDTO {
+
+    @NotBlank
+    private String descripcionProducto;
+
+    @NotBlank
+    private String tipoTrabajo;
+
+    @NotNull
+    @PastOrPresent
+    private LocalDate fechaSolicitud;
+
+    @NotNull
+    @Future
+    private LocalDate fechaEntregaComprometida;
+
+    @NotNull
+    private Integer estadoId;
+
+    @NotNull
+    private Integer clienteId;
+
+    @NotNull
+    private Integer usuarioCreadorId;
+
+    private Integer operarioAsignadoId;
+}
+
+
+package pe.edu.uni.mecafab.filter;
+
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+import pe.edu.uni.mecafab.util.JwtUtil;
+
+import java.io.IOException;
+import java.util.List;
+
+@Component
+public class JwtFilter extends OncePerRequestFilter {
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain) throws ServletException, IOException {
+        final String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            final String token = authHeader.substring(7);
+            if (jwtUtil.validateToken(token)) {
+                String username = jwtUtil.extractUsername(token);
+                UsernamePasswordAuthenticationToken authToken =
+                        new UsernamePasswordAuthenticationToken(username, null, List.of());
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            }
+        }
+        filterChain.doFilter(request, response);
+    }
+}
+
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Cliente {
+    private Integer id;
+    private String nombreRazonSocial;
+    private String documento;
+    private String telefono;
+    private String correo;
+    private String direccion;
+}
+
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class EstadoPedido {
+    private Integer id;
+    private String nombre;
+    private Integer ordenLogico;
+    private boolean esFinal;
+}
+
+
+
+package pe.edu.uni.mecafab.model;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Pedido {
+    private Integer id;
+    private String codigo;
+    private String descripcionProducto;
+    private String tipoTrabajo;
+    private LocalDate fechaSolicitud;
+    private LocalDate fechaEntregaComprometida;
+
+    /**
+     * Fecha en que el sistema registra la entrega física del pedido.
+     * Se asigna automáticamente con GETDATE() al confirmar la entrega.
+     */
+    @JsonIgnore // Evitarla es mejor (por ahora)
+    private LocalDate fechaEntregaReal;
+
+    /**
+     * Fecha que el encargado (jefe de taller) anota como día en que el cliente recibió el pedido.
+     * Puede coincidir con fechaEntregaReal o diferir según el registro manual.
+     */
+    private LocalDate fechaEntregaConfirmada;
+
+    private Integer estadoId;
+    private Integer clienteId;
+    private Integer operarioAsignadoId;
+    private Integer usuarioCreadorId;
+    private boolean esEntregado;
+}
+
+
+package pe.edu.uni.mecafab.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Usuario {
+    private Integer id;
+    private String nombre;
+    private String correo;
+    private String clave;
+    private Integer rolId;
+    private boolean estado;
+}
+
+package pe.edu.uni.mecafab.repository;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+import pe.edu.uni.mecafab.model.Usuario;
+import java.util.List;
+
+@Repository
+@RequiredArgsConstructor
+public class AuthRepository {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public Usuario validarUsuarioContrasena(String usuario, String contrasena) {
+        String sql = "SELECT TOP 1 * FROM Usuario WHERE correo=? AND clave=? AND estado=1";
+        return jdbcTemplate.query(sql,
+                BeanPropertyRowMapper.newInstance(Usuario.class),
+                usuario, contrasena
+        ).stream().findFirst().orElse(null);
+    }
+}
+
+package pe.edu.uni.mecafab.repository;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.stereotype.Repository;
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.model.Pedido;
+import pe.edu.uni.mecafab.util.TransCodeUtil;
+
+import java.sql.*;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+@Repository
+@RequiredArgsConstructor
+public class PedidoRepository {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public void insertarPedido(PedidoRequestDTO dto) {
+        // 1. SQL sin el código
+        String sql = """
+        INSERT INTO Pedido (
+            descripcion_producto, tipo_trabajo, fecha_solicitud,
+            fecha_entrega_comprometida, estado_id, cliente_id,
+            operario_asignado_id, usuario_creador_id, fecha_registro, es_entregado
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), 0)
+    """;
+
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+
+        // 2. Ejecuta el INSERT y captura el ID generado
+        jdbcTemplate.update((Connection con) -> {
+            PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+            ps.setString(1, dto.getDescripcionProducto());
+            ps.setString(2, dto.getTipoTrabajo());
+            ps.setObject(3, dto.getFechaSolicitud());
+            ps.setObject(4, dto.getFechaEntregaComprometida());
+            ps.setInt(5, dto.getEstadoId());
+            ps.setInt(6, dto.getClienteId());
+            if(dto.getOperarioAsignadoId()!=null)
+                ps.setInt(7, dto.getOperarioAsignadoId());
+            else
+                ps.setNull(7, Types.INTEGER);
+            ps.setInt(8, dto.getUsuarioCreadorId());
+            return ps;
+        }, keyHolder);
+
+        // 3. Recupera el ID
+        Integer nuevoId = keyHolder.getKey().intValue();
+
+        // 4. Genera el código con tu utilitario
+        String codigo = TransCodeUtil.transCodePedido(nuevoId);
+
+        // 5. Actualiza sólo la columna 'codigo'
+        String updateSql = "UPDATE Pedido SET codigo = ? WHERE id = ?";
+        jdbcTemplate.update(updateSql, codigo, nuevoId);
+    }
+
+    public void actualizarAsignacion(AsignacionPedidoDTO dto) {
+        String sql = """
+            UPDATE Pedido
+            SET estado_id = ?, operario_asignado_id = ?, fecha_modificacion = GETDATE()
+            WHERE id = ?
+        """;
+        jdbcTemplate.update(sql,
+                dto.getNuevoEstadoId(),
+                dto.getOperarioId(),
+                dto.getPedidoId()
+        );
+    }
+
+    public boolean actualizarEstadoSiEsDiferente(CambioEstadoDTO dto) {
+        String getEstadoSql = "SELECT estado_id FROM Pedido WHERE id = ?";
+        Integer estadoActual = jdbcTemplate.queryForObject(getEstadoSql, Integer.class, dto.getPedidoId());
+
+        if (estadoActual != null && estadoActual.equals(dto.getNuevoEstadoId())) {
+            return false;
+        }
+
+        String updateSql = """
+        UPDATE Pedido
+        SET estado_id = ?, fecha_modificacion = GETDATE()
+        WHERE id = ?
+    """;
+        jdbcTemplate.update(updateSql,
+                dto.getNuevoEstadoId(),
+                dto.getPedidoId()
+        );
+
+        insertarHistorialEstadoCompleto(dto, estadoActual);
+        return true;
+    }
+
+    public void insertarHistorialEstadoCompleto(CambioEstadoDTO dto, Integer estadoAnteriorId) {
+        String sql = """
+            INSERT INTO HistorialEstadoPedido (pedido_id, estado_anterior_id, estado_nuevo_id, usuario_id, fecha_cambio)
+            VALUES (?, ?, ?, ?, GETDATE())
+        """;
+        jdbcTemplate.update(sql,
+                dto.getPedidoId(),
+                estadoAnteriorId,
+                dto.getNuevoEstadoId(),
+                dto.getUsuarioResponsableId()
+        );
+    }
+
+    public void actualizarEntrega(ConfirmacionEntregaDTO dto) {
+        String sql = """
+            UPDATE Pedido
+            SET estado_id = (SELECT id FROM EstadoPedido WHERE nombre = 'Entregado'),
+                es_entregado = 1,
+                fecha_entrega_confirmada = ?,
+                fecha_entrega_real = GETDATE(),
+                fecha_modificacion = GETDATE()
+            WHERE id = ?
+        """;
+        jdbcTemplate.update(sql,
+                dto.getFechaEntregaConfirmada() != null ? Date.valueOf(dto.getFechaEntregaConfirmada()) : null,
+                dto.getPedidoId()
+        );
+    }
+
+    public void insertarComprobante(ConfirmacionEntregaDTO dto) {
+        String sql = """
+            INSERT INTO ComprobanteEntrega (pedido_id, fecha_generacion, contenido, tipo, usuario_id)
+            VALUES (?, GETDATE(), ?, ?, ?)
+        """;
+        jdbcTemplate.update(sql,
+                dto.getPedidoId(),
+                dto.getContenido(),
+                dto.getTipoComprobante(),
+                dto.getUsuarioResponsableId()
+        );
+    }
+
+    public List<Pedido> buscarPedidos(Integer estadoId, Integer operarioId, Integer clienteId) {
+        StringBuilder sql = new StringBuilder("SELECT * FROM Pedido WHERE 1=1");
+        List<Object> params = new ArrayList<>();
+
+        if (estadoId != null) {
+            sql.append(" AND estado_id = ?");
+            params.add(estadoId);
+        }
+
+        if (operarioId != null) {
+            sql.append(" AND operario_asignado_id = ?");
+            params.add(operarioId);
+        }
+
+        if (clienteId != null) {
+            sql.append(" AND cliente_id = ?");
+            params.add(clienteId);
+        }
+
+        return jdbcTemplate.query(sql.toString(), BeanPropertyRowMapper.newInstance(Pedido.class), params.toArray());
+    }
+
+    public List<Pedido> buscarEntregasPorRango(LocalDate desde, LocalDate hasta) {
+        String sql = "SELECT * FROM Pedido WHERE fecha_entrega_real BETWEEN ? AND ?";
+        return jdbcTemplate.query(sql,
+                BeanPropertyRowMapper.newInstance(Pedido.class),
+                desde, hasta
+        );
+    }
+
+    public List<Pedido> buscarPedidosPorVencer(int dias) {
+        String sql = """
+                        SELECT * FROM Pedido 
+                        WHERE es_entregado = 0  
+                        AND fecha_entrega_comprometida BETWEEN GETDATE() AND DATEADD(DAY, ?, GETDATE())
+                     """;
+        return jdbcTemplate.query(sql,
+                BeanPropertyRowMapper.newInstance(Pedido.class),
+                dias
+        );
+    }
+
+    // SOLUCIONA Asignacion
+    public boolean existePedidoPorId(Integer id) {
+        String sql = "SELECT COUNT(1) FROM Pedido WHERE id = ?";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, id);
+        return count != null && count > 0;
+    }
+
+    // SOLUCIONA Comprobante y entrega
+    public Pedido obtenerPorId(Integer id) {
+        String sql = "SELECT * FROM Pedido WHERE id = ?";
+        return jdbcTemplate.queryForObject(
+                sql,
+                BeanPropertyRowMapper.newInstance(Pedido.class),
+                id
+        );
+    }
+
+    // Al cambiar o asignar pedido se intenta cambiar de estado, se lanza excepcion
+    public boolean pedidoYaEntregado(Integer id) {
+        String sql = "SELECT es_entregado FROM Pedido WHERE id = ?";
+        return jdbcTemplate.queryForObject(sql, Boolean.class, id);
+    }
+
+}
+
+package pe.edu.uni.mecafab.service;
+
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.model.Pedido;
+import pe.edu.uni.mecafab.model.Usuario;
+
+import java.time.LocalDate;
+import java.util.List;
+
+public interface AuthService {
+    Usuario validarUsuarioContrasena(String usuario, String contrasena);
+}
+
+package pe.edu.uni.mecafab.service;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.exception.EntregaYaConfirmadaException;
+import pe.edu.uni.mecafab.exception.EstadoYaAsignadoException;
+import pe.edu.uni.mecafab.exception.PedidoNoEncontradoException;
+import pe.edu.uni.mecafab.exception.PedidoYaEntregadoException;
+import pe.edu.uni.mecafab.model.Pedido;
+import pe.edu.uni.mecafab.model.Usuario;
+import pe.edu.uni.mecafab.repository.AuthRepository;
+import pe.edu.uni.mecafab.repository.PedidoRepository;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class AuthServiceImpl implements AuthService {
+
+    private final AuthRepository authRepository;
+
+
+    @Override
+    public Usuario validarUsuarioContrasena(String usuario, String contrasena) {
+        return authRepository.validarUsuarioContrasena(usuario, contrasena);
+    }
+}
+
+package pe.edu.uni.mecafab.service;
+
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.model.Pedido;
+
+import java.time.LocalDate;
+import java.util.List;
+
+public interface PedidoService {
+    void registrarPedido(PedidoRequestDTO dto);
+    void asignarPedido(AsignacionPedidoDTO dto);
+    void cambiarEstado(CambioEstadoDTO dto);
+    void confirmarEntrega(ConfirmacionEntregaDTO dto);
+    List<Pedido> listarPedidos(Integer estadoId, Integer operarioId, Integer clienteId);
+    List<Pedido> obtenerEntregasPorRango(LocalDate desde, LocalDate hasta);
+    List<Pedido> obtenerPedidosPorVencer(int dias);
+}
+
+package pe.edu.uni.mecafab.service;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
+import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
+import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
+import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.exception.EntregaYaConfirmadaException;
+import pe.edu.uni.mecafab.exception.EstadoYaAsignadoException;
+import pe.edu.uni.mecafab.exception.PedidoNoEncontradoException;
+import pe.edu.uni.mecafab.exception.PedidoYaEntregadoException;
+import pe.edu.uni.mecafab.model.Pedido;
+import pe.edu.uni.mecafab.repository.PedidoRepository;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class PedidoServiceImpl implements PedidoService {
+
+    private final PedidoRepository pedidoRepository;
+
+    @Override
+    public void registrarPedido(PedidoRequestDTO dto) {
+        pedidoRepository.insertarPedido(dto);
+    }
+
+    @Override
+    public void asignarPedido(AsignacionPedidoDTO dto) {
+        validarExistenciaPedido(dto.getPedidoId());
+        validarPedidoYaEntregado(dto.getPedidoId());
+        pedidoRepository.actualizarAsignacion(dto);
+    }
+
+    @Override
+    public void cambiarEstado(CambioEstadoDTO dto) {
+        validarExistenciaPedido(dto.getPedidoId());
+        validarPedidoYaEntregado(dto.getPedidoId());
+        boolean cambiado = pedidoRepository.actualizarEstadoSiEsDiferente(dto);
+        if (!cambiado) {
+            throw new EstadoYaAsignadoException();
+        }
+    }
+
+    // SOLUCIONA Comprobante y entrega
+    @Override
+    public void confirmarEntrega(ConfirmacionEntregaDTO dto) {
+        // 1) Valida existencia
+        validarExistenciaPedido(dto.getPedidoId());
+
+        // 2) (Opcional) evita confirmarlo dos veces
+        Pedido pedido = pedidoRepository.obtenerPorId(dto.getPedidoId());
+        if (pedido.isEsEntregado()) {
+            throw new EntregaYaConfirmadaException(dto.getPedidoId());
+        }
+
+        // 3) Actualiza los campos de entrega
+        pedidoRepository.actualizarEntrega(dto);
+
+        // 4) Registra el comprobante
+        pedidoRepository.insertarComprobante(dto);
+    }
+
+    @Override
+    public List<Pedido> listarPedidos(Integer estadoId, Integer operarioId, Integer clienteId) {
+        return pedidoRepository.buscarPedidos(estadoId, operarioId, clienteId);
+    }
+
+    @Override
+    public List<Pedido> obtenerEntregasPorRango(LocalDate desde, LocalDate hasta) {
+        return pedidoRepository.buscarEntregasPorRango(desde, hasta);
+    }
+
+    @Override
+    public List<Pedido> obtenerPedidosPorVencer(int dias) {
+        return pedidoRepository.buscarPedidosPorVencer(dias);
+    }
+
+    private Pedido obtenerPedido(Integer id) {
+        return pedidoRepository.buscarPedidos(id, null, null).stream()
+                .findFirst()
+                .orElseThrow(() -> new PedidoNoEncontradoException(id));
+    }
+
+    //=================================================================
+    //======================= VALIDACIONES ============================
+    //=================================================================
+    // SOLUCIONA Asignacion
+    private void validarExistenciaPedido(Integer id) {
+        if (!pedidoRepository.existePedidoPorId(id)) {
+            throw new PedidoNoEncontradoException(id);
+        }
+    }
+
+    // Para cuando se intenta cambiar el estado de un pedido que ya esta entregado
+    private void validarPedidoYaEntregado(Integer id) {
+        if(pedidoRepository.pedidoYaEntregado(id)) {
+            throw new PedidoYaEntregadoException(id);
+        }
+    }
+
+}
+
+package pe.edu.uni.mecafab.util;
+
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.stereotype.Component;
+
+import java.util.Date;
+
+@Component
+public class JwtUtil {
+    private final String SECRET_KEY = "muy-segura-y-con-mas-de-32-caracteres-123456!";
+
+    public String generateToken(String username) {
+        return Jwts.builder()
+                .setSubject(username)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 86400000)) // 1 día
+                .signWith(Keys.hmacShaKeyFor(SECRET_KEY.getBytes()), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public String extractUsername(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(SECRET_KEY.getBytes())
+                .build()
+                .parseClaimsJws(token)
+                .getBody()
+                .getSubject();
+    }
+
+    public boolean validateToken(String token) {
+        try {
+            extractUsername(token);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+}
+
+package pe.edu.uni.mecafab.util;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+
+public class TransCodeUtil {
+    // Formato año+mes, e.g. "202506"
+    private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyyMM");
+
+    /**
+     * Genera un código tipo "PED-202506-001" a partir del ID numérico.
+     * @param id el ID secuencial del cliente
+     * @return el código formateado
+     */
+    public static String transCodePedido(int id) {
+        String ym = LocalDate.now().format(YM);
+        // %03d ⇒ 3 dígitos, ceros a la izquierda
+        return String.format("PED-%s-%03d", ym, id);
+    }
+
+    // ... otros métodos si los necesitas
+}
+
+package pe.edu.uni.mecafab.controller;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import pe.edu.uni.mecafab.model.Cliente;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/clientes")
+@RequiredArgsConstructor
+public class ClienteController {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    @GetMapping
+    public ResponseEntity<List<Cliente>> listarClientes() {
+        String sql = "SELECT * FROM Cliente";
+        List<Cliente> clientes = jdbcTemplate.query(
+                sql,
+                BeanPropertyRowMapper.newInstance(Cliente.class)
+        );
+        return ResponseEntity.ok(clientes);
+    }
+}
