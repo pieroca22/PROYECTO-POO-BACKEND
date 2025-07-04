@@ -2,13 +2,18 @@ package pe.edu.uni.mecafab.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 import pe.edu.uni.mecafab.dto.AsignacionPedidoDTO;
 import pe.edu.uni.mecafab.dto.CambioEstadoDTO;
 import pe.edu.uni.mecafab.dto.ConfirmacionEntregaDTO;
 import pe.edu.uni.mecafab.dto.PedidoRequestDTO;
+import pe.edu.uni.mecafab.exception.PedidoNoEncontradoException;
 import pe.edu.uni.mecafab.model.Pedido;
 import pe.edu.uni.mecafab.service.PedidoService;
 
@@ -21,6 +26,7 @@ import java.util.List;
 public class PedidoController {
 
     private final PedidoService pedidoService;
+    private final JdbcTemplate jdbcTemplate;
 
     @GetMapping("/health")
     public ResponseEntity<String> healthCheck() {
@@ -78,4 +84,27 @@ public class PedidoController {
     ) {
         return pedidoService.obtenerPedidosPorVencer(dias);
     }
+
+    // NUEVO
+    @GetMapping("/{id}")
+    public ResponseEntity<Pedido> getPedidoById(@PathVariable int id) {
+        try {
+            String sql = """
+      SELECT p.*,
+             c.nombre_razon_social AS nombreRazonSocial
+        FROM pedido p
+        JOIN cliente c ON p.cliente_id = c.id
+       WHERE p.id = ?
+      """;
+            Pedido p = jdbcTemplate.queryForObject(
+                    sql,
+                    new BeanPropertyRowMapper<>(Pedido.class),
+                    id
+            );
+            return ResponseEntity.ok(p);
+        } catch (EmptyResultDataAccessException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+    }
+
 }

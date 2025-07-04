@@ -103,4 +103,11 @@ public class PedidoServiceImpl implements PedidoService {
         }
     }
 
+    // NUEVO
+    @Override
+    public Pedido obtenerPorId(Integer id) {
+        return pedidoRepository.obtenerPorId(id);
+    }
+
+
 }

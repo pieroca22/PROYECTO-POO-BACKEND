@@ -37,5 +37,8 @@ public class Pedido {
     private Integer operarioAsignadoId;
     private Integer usuarioCreadorId;
     private boolean esEntregado;
+
+
+    private String nombreRazonSocial;
 }
 

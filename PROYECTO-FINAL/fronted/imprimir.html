@@ -1,98 +1,100 @@
-<html>
-  <head>
-    <script
-      src="https://code.jquery.com/jquery-3.7.1.min.js"
-      integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
-      crossorigin="anonymous"
-    ></script>
-    <script src="https://s3.amazonaws.com/builds.handlebarsjs.com/handlebars.min-v4.7.8.js"></script>
-  </head>
-  <body>
-    <div>
-      <table
-        id="resumen"
-        border="1"
-        style="width: 400px; margin: 0px auto"
-      ></table>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Resumen de Pedido</title>
+  <!-- Bootstrap CSS opcional para estilo -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <!-- jQuery y Handlebars -->
+  <script
+    src="https://code.jquery.com/jquery-3.7.1.min.js"
+    integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+    crossorigin="anonymous"
+  ></script>
+  <script
+    src="https://s3.amazonaws.com/builds.handlebarsjs.com/handlebars.min-v4.7.8.js"
+  ></script>
+</head>
+<body class="bg-light">
+  <div class="container py-5">
+    <h1 class="text-center mb-4">Resumen de la Orden</h1>
+    <div id="detalle"></div>
+    <div class="text-center mt-4">
+      <button class="btn btn-primary me-2" onclick="window.print()">Imprimir</button>
+      <a href="/listar.html" class="btn btn-link">Volver atrás</a>
     </div>
-    <div style="text-align: center; margin-top: 32px;">
-        <button type="button" onclick="window.print()">Imprimir</button>
-    </div>
-    <div style="text-align: center; margin-top: 32px;">
-      <a href="/listar.html">Volver atras</a>
-    </div>
-    <script id="resumen-template" type="text/application">
-      <tbody>
-        <tr>
-          <td colspan="2" style="text-align: center;">RESUMEN DE LA ORDEN</td>
-        </tr>
-        <tr>
-          <td>CODIGO:</td>
-          <td>{{ codigo }}</td>
-        </tr>
-        <tr>
-          <td>TIPO DE TRABAJO:</td>
-          <td>{{ tipoTrabajo }}</td>
-        </tr>
-        <tr>
-          <td>DESCRIPCION DEL PRODUCTO:</td>
-          <td>{{descripcionProducto}}</td>
-        </tr>
-        <tr>
-          <td>FECHA DE LA SOLICITUD:</td>
-          <td>{{ fechaSolicitud }}</td>
-        </tr>
-        <tr>
-          <td>FECHA DE CONFIRMACION:</td>
-          <td>{{fechaEntregaConfirmada}}</td>
-        </tr>
-        <tr>
-          <td>FECHA COMPROMETIDA:</td>
-          <td>{{ fechaEntregaComprometida }}</td>
-        </tr>
-      </tbody>
-    </script>
-    <script>
-      var BASE =
-        "https://yndycuezavrelllugbkc.supabase.co/functions/v1/fake/Q3YQ7D14XY6J";
-      const params = new URLSearchParams(window.location.search);
+  </div>
 
-      // Obtener un valor específico
-      const orden = params.get("orden");
-      $(document).ready(function () {
-        function draw(data) {
-          var one = data.find((e) => e.id + "" === orden + "");
-          if (one) {
-            var html = $("#resumen-template").text();
-            // compile the template
-            var template = Handlebars.compile(html);
-            // execute the compiled template and print the output to the console
-            var result = template(one);
-            $("#resumen").html(result);
+  <!-- Plantilla Handlebars -->
+  <script id="resumen-template" type="text/x-handlebars-template">
+    <table class="table table-bordered">
+      <thead class="table-light">
+        <tr>
+          <th colspan="2" class="text-center">RESUMEN DE LA ORDEN</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><th>CÓDIGO:</th><td>{{codigo}}</td></tr>
+        <tr><th>CLIENTE:</th><td>{{nombreRazonSocial}}</td></tr>
+        <tr><th>TIPO DE TRABAJO:</th><td>{{tipoTrabajo}}</td></tr>
+        <tr><th>DESCRIPCIÓN:</th><td>{{descripcionProducto}}</td></tr>
+        <tr><th>FECHA SOLICITUD:</th><td>{{fechaSolicitud}}</td></tr>
+        <tr><th>FECHA CONFIRMACIÓN:</th><td>{{fechaEntregaConfirmada}}</td></tr>
+        <tr><th>FECHA COMPROMETIDA:</th><td>{{fechaEntregaComprometida}}</td></tr>
+        <tr><th>ESTADO:</th><td>{{estadoText}}</td></tr>
+      </tbody>
+    </table>
+  </script>
+
+  <script>
+    (function() {
+      const BASE = "http://localhost:8080"; // URL de tu API Spring Boot
+      const token = localStorage.getItem("token") || "";
+      const params = new URLSearchParams(window.location.search);
+      const ordenId = params.get("orden");
+
+      if (!ordenId) {
+        alert("ID de orden faltante");
+        return;
+      }
+
+      $.ajax({
+        url: `${BASE}/api/pedidos/${ordenId}`,
+        method: "GET",
+        headers: {
+          "Authorization": "Bearer " + token
+        },
+        success: function(pedido) {
+          // Traducir el estado a texto
+          const estados = {
+            1: "Registrado",
+            2: "En producción",
+            3: "Por terminar",
+            4: "Entregado",
+            5: "En espera de material"
+          };
+          pedido.estadoText = estados[pedido.estadoId] || "Desconocido";
+
+          // Renderizar con Handlebars
+          const source   = $("#resumen-template").html();
+          const template = Handlebars.compile(source);
+          $("#detalle").html(template(pedido));
+        },
+        error: function(xhr) {
+          if (xhr.status === 404) {
+            alert("Lo sentimos, no se encontró la orden.");
+          } else if (xhr.status === 401 || xhr.status === 403) {
+            alert("No estás autorizado. Por favor inicia sesión de nuevo.");
           } else {
-            alert("Lo sentimos no se encontro la orden.");
+            alert("Error al cargar la orden.");
           }
         }
-        function load(params) {
-          $.ajax({
-            url: BASE + "/api/pedidos",
-            method: "GET",
-            contentType: "application/json",
-            data: params,
-            success: function (response) {
-              draw(response);
-            },
-            error: function (xhr, status, error) {
-              alert("Error al iniciar sesión: " + xhr.responseText);
-              console.error("Status:", status);
-              console.error("Error:", error);
-            },
-          });
-        }
-        setTimeout(function () {
-          load({});
-        }, 250);
       });
-    </script>
-  </body>
+    })();
+  </script>
+</body>
 </html>

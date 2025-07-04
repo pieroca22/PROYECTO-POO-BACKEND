@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Gestión de Tareas</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+    integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+</head>
+
+<body class="bg-light">
+  <div class="container py-5">
+    <div class="row justify-content-center mb-4">
+      <div class="col-md-8">
+        <h1 class="text-center">Taller Mecafab</h1>
+        <div class="card shadow">
+          <div class="card-header">Crear nueva tarea</div>
+          <div class="card-body">
+            <form id="form-create">
+              <!-- Selección de Cliente -->
+              <div class="mb-3">
+                <label for="clienteId" class="form-label">Cliente</label>
+                <select id="clienteId" class="form-select" required>
+                  <option value="">-- Seleccione cliente --</option>
+                </select>
+              </div>
+
+              <div class="mb-3">
+                <label for="tipoTrabajo" class="form-label">Tipo de Trabajo</label>
+                <input type="text" class="form-control" id="tipoTrabajo" placeholder="Tipo de Trabajo" required />
+              </div>
+              <div class="mb-3">
+                <label for="descripcionProducto" class="form-label">Descripción del Producto</label>
+                <textarea class="form-control" id="descripcionProducto" rows="3"
+                  placeholder="Descripción del Producto" required></textarea>
+              </div>
+              <div class="d-flex gap-4">
+                <div class="mb-3 w-50">
+                  <label for="fechaSolicitud" class="form-label">Fecha de Solicitud</label>
+                  <input type="date" class="form-control" id="fechaSolicitud" required />
+                </div>
+                <div class="mb-3 w-50">
+                  <label for="fechaEntregaComprometida" class="form-label">Fecha de Entrega Comprometida</label>
+                  <input type="date" class="form-control" id="fechaEntregaComprometida" required />
+                </div>
+              </div>
+              <button type="submit" class="btn btn-success">
+                Agregar Tarea
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="alerta" class="modal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-body text-center">
+          <!-- ícono de éxito -->
+          <h4>Orden creada</h4>
+        </div>
+        <div class="modal-footer">
+          <a href="/listar.html">Continuar</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const BASE = "http://localhost:8080";
+    let token = "";
+
+    // Carga de sesión y token
+    function loadAuth() {
+      token = localStorage.getItem("token") || "";
+      if (!token) {
+        window.location.href = "/login.html";
+      }
+    }
+
+    // Cargar lista de clientes en el select
+    function loadClientes() {
+      $.ajax({
+        url: BASE + "/api/clientes",
+        method: "GET",
+        headers: { "Authorization": "Bearer " + token },
+        success: function (clientes) {
+          clientes.forEach(c => {
+            $("#clienteId").append(
+              `<option value="${c.id}">${c.nombreRazonSocial}</option>`
+            );
+          });
+        },
+        error: function () {
+          alert("No se pudieron cargar los clientes.");
+        }
+      });
+    }
+
+    $(document).ready(function () {
+      loadAuth();
+      loadClientes();
+
+      const myModal = new bootstrap.Modal("#alerta", { keyboard: false });
+
+      $("#form-create").on("submit", function (e) {
+        e.preventDefault();
+
+        const formData = {
+          descripcionProducto: $("#descripcionProducto").val(),
+          tipoTrabajo: $("#tipoTrabajo").val(),
+          fechaSolicitud: $("#fechaSolicitud").val(),
+          fechaEntregaComprometida: $("#fechaEntregaComprometida").val(),
+          estadoId: 1, // Registrado
+          clienteId: parseInt($("#clienteId").val()),
+          usuarioCreadorId: parseInt(localStorage.getItem("user")),
+          operarioAsignadoId: null
+        };
+
+        $.ajax({
+          url: BASE + "/api/pedidos",
+          method: "POST",
+          contentType: "application/json",
+          data: JSON.stringify(formData),
+          headers: { "Authorization": "Bearer " + token },
+          success: function () {
+            myModal.show();
+          },
+          error: function (xhr) {
+            alert("Error: " + xhr.responseText);
+          }
+        });
+      });
+    });
+  </script>
+</body>
+
+</html>

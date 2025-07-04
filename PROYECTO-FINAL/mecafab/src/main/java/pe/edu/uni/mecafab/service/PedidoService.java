@@ -17,4 +17,8 @@ public interface PedidoService {
     List<Pedido> listarPedidos(Integer estadoId, Integer operarioId, Integer clienteId);
     List<Pedido> obtenerEntregasPorRango(LocalDate desde, LocalDate hasta);
     List<Pedido> obtenerPedidosPorVencer(int dias);
+
+    // NUEVO
+    Pedido obtenerPorId(Integer id);
+
 }

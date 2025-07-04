@@ -184,6 +184,28 @@ public class PedidoController {
     ) {
         return pedidoService.obtenerPedidosPorVencer(dias);
     }
+	
+    // NUEVO
+    @GetMapping("/{id}")
+    public ResponseEntity<Pedido> getPedidoById(@PathVariable int id) {
+        try {
+            String sql = """
+      SELECT p.*,
+             c.nombre_razon_social AS nombreRazonSocial
+        FROM pedido p
+        JOIN cliente c ON p.cliente_id = c.id
+       WHERE p.id = ?
+      """;
+            Pedido p = jdbcTemplate.queryForObject(
+                    sql,
+                    new BeanPropertyRowMapper<>(Pedido.class),
+                    id
+            );
+            return ResponseEntity.ok(p);
+        } catch (EmptyResultDataAccessException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+    }
 }
 
 package pe.edu.uni.mecafab.dto;
@@ -432,6 +454,8 @@ public class Pedido {
     private Integer operarioAsignadoId;
     private Integer usuarioCreadorId;
     private boolean esEntregado;
+
+    private String nombreRazonSocial;
 }
 
 

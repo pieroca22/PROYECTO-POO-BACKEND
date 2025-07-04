@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Gestión de Tareas</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+    integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+  <script src="https://s3.amazonaws.com/builds.handlebarsjs.com/handlebars.min-v4.7.8.js"></script>
+</head>
+
+<body class="bg-light">
+  <div class="container py-5">
+    <div class="text-end">
+      <button id="btn-logout" class="btn btn-danger btn-sm">Salir</button>
+    </div>
+    <!-- Listado de Tareas -->
+    <div class="row justify-content-center">
+      <div class="col-md-10">
+        <h1 class="text-center">Taller Mecafab</h1>
+        <div class="d-flex justify-content-between">
+          <div class="py-4">
+            <a id="btn-nuevo" href="/crear.html" class="btn btn-sm btn-secondary" style="display: none;">Crear nuevo</a>
+          </div>
+          <div>
+            <div id="estados-jefe" class="py-4 text-end" style="display: none">
+              <small>Filtrar por estado: </small>
+              <button type="button" data-estado="1" class="btn btn-sm btn-primary filter-estado">
+                Registrado
+              </button>
+              <button type="button" data-estado="2" class="btn btn-sm btn-success filter-estado">
+                En producción
+              </button>
+              <button type="button" data-estado="3" class="btn btn-sm btn-danger filter-estado">
+                Por terminar
+              </button>
+              <button type="button" data-estado="4" class="btn btn-sm btn-warning filter-estado">
+                Entregado
+              </button>
+              <button type="button" data-estado="5" class="btn btn-sm btn-secondary filter-estado">
+                En espera de material
+              </button>
+            </div>
+            <div id="estados-operario" class="py-4 text-end" style="display: none">
+              <small>Filtrar por estado: </small>
+              <button type="button" data-estado="2" class="btn btn-sm btn-success filter-estado">
+                En producción
+              </button>
+              <button type="button" data-estado="3" class="btn btn-sm btn-danger filter-estado">
+                Por terminar
+              </button>
+              <button type="button" data-estado="4" class="btn btn-sm btn-warning filter-estado">
+                Entregado
+              </button>
+              <button type="button" data-estado="5" class="btn btn-sm btn-secondary filter-estado">
+                En espera de material
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card shadow">
+          <div class="card-header">Lista de tareas</div>
+          <ul id="list" class="list-group list-group-flush"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de detalle -->
+  <div id="modal-edit" class="modal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            Pedido: <span id="mod-pedido-code"></span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div id="area-asignar">
+            <form id="form-asignar">
+              <div class="mb-3">
+                <label>Elija al operario</label>
+                <select required class="form-control" id="txt-operario-id"></select>
+              </div>
+              <div>
+                <button type="submit" class="btn btn-sm btn-primary">
+                  Asignar operario
+                </button>
+              </div>
+            </form>
+          </div>
+          <div id="area-entregado" class="text-center">
+            <button type="button" id="btn-jefe-entregado" class="btn btn-success btn-sm">
+              Marcar como Entregado
+            </button>
+          </div>
+          <div id="area-imprimir" class="text-center">
+            <a href="#" target="_self" class="btn btn-secondary btn-sm">
+              Generar resumen
+            </a>
+          </div>
+          <div id="area-estado-operario">
+            <form id="form-estado-operario">
+              <div class="mb-3">
+                <label>Seleccione el estado</label>
+                <select id="select-estado-operario" class="form-control">
+                  <option value="3">Por terminar</option>
+                  <option value="5">En espera de material</option>
+                </select>
+              </div>
+              <div>
+                <button type="submit" class="btn btn-sm btn-primary">
+                  Cambiar de estado
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Templates Handlebars -->
+  <script id="operatios-template" type="text/application">
+    {{#each rows}}
+      <option value="{{id}}">{{nombre}}</option>
+    {{/each}}
+  </script>
+
+  <script id="item-template" type="text/application">
+    {{#each rows}}
+      <li class="list-group-item">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div>
+              <strong>{{ codigo }}:</strong> {{ tipoTrabajo }}
+              <span class="badge bg-secondary">{{ estadoText }}</span>
+            </div>
+            <div>
+              <em>{{descripcionProducto}}</em>
+            </div>
+            <!-- AÑADIDO: muestra nombre del cliente -->
+            <div>
+              <small class="text-muted">Cliente: {{clienteText}}</small>
+            </div>
+            <div class="text-primary">
+              <strong>{{operarioAsignadoText}}</strong>
+            </div>
+            <div>
+              <small class="text-muted">Fecha Sol: {{ fechaSolicitud }}</small> |
+              <small class="text-muted">Fecha Conf: {{ fechaEntregaConfirmada }}</small> |
+              <small class="text-muted">Fecha Comp: {{ fechaEntregaComprometida }}</small>
+            </div>
+          </div>
+          <div>
+            <button data-id="{{id}}" type="button" class="btn btn-primary btn-sm tarea-detalle">
+              Ver
+            </button>
+          </div>
+        </div>
+      </li>
+    {{else}}
+      <li class="list-group-item text-center text-muted">
+        No hay pedidos disponibles.
+      </li>
+    {{/each}}
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    var BASE = "http://localhost:8080";
+    // ← AÑADIDO: array global para cachear clientes
+    var clientesList = [];
+
+    $(document).ready(function () {
+      const estados = {
+        e1: "Registrado",
+        e2: "En producción",
+        e3: "Por terminar",
+        e4: "Entregado",
+        e5: "En espera de material",
+      };
+      const operariosList = [
+        { "id": 2, "nombre": "Carlos Gamarra" },
+        { "id": 3, "nombre": "Luis Chacón" },
+        { "id": 4, "nombre": "Marcos Díaz" },
+        { "id": 5, "nombre": "Víctor Salas" },
+        { "id": 6, "nombre": "Jorge Huamán" },
+      ];
+      const ROL_JEFE = 1;
+      const ROL_OPERARIO = 2;
+      var basePedidos = [];
+      const modalEdit = new bootstrap.Modal("#modal-edit", { keyboard: false });
+      var rolId = 0;
+      var operarioId = 0;
+      var token = "";
+      var baseParams = {};
+
+      function loadRol() {
+        token = localStorage.getItem("token") ?? "";
+        rolId = parseInt(localStorage.getItem("rol"));
+        if (isNaN(rolId)) {
+          window.location.href = "/login.html";
+          return;
+        }
+        operarioId = parseInt(localStorage.getItem("user"));
+        if (isNaN(operarioId)) {
+          window.location.href = "/login.html";
+          return;
+        }
+        if (rolId === ROL_JEFE) {
+          $("#estados-jefe").show();
+          $("#btn-nuevo").show();
+        } else if (rolId === ROL_OPERARIO) {
+          $("#estados-operario").show();
+          $("#btn-nuevo").hide();
+          baseParams = { ...baseParams, operarioId: operarioId };
+        }
+        // ← AÑADIDO: primero cargo la lista de clientes, luego los pedidos
+        loadClientes();
+        load(baseParams);
+      }
+
+      // ← AÑADIDO: función para obtener lista de clientes
+      function loadClientes() {
+        $.ajax({
+          url: BASE + "/api/clientes",
+          method: "GET",
+          headers: { "Authorization": "Bearer " + token },
+          success: function (data) {
+            clientesList = data;
+          },
+          error: function () {
+            alert("No se pudieron cargar los clientes.");
+          }
+        });
+      }
+
+      function drawLoading() {
+        $("#list").html(
+          '<div class="p-4 d-flex justify-content-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>'
+        );
+      }
+
+      $(".filter-estado").click(function () {
+        var $this = $(this);
+        drawLoading();
+        load({ ...baseParams, estadoId: $this.data("estado") });
+      });
+
+      function activeModalEdit(id) {
+        $("#area-asignar, #area-imprimir, #area-estado-operario, #area-entregado").hide();
+        var current = basePedidos.find(e => e.id == id);
+        if (!current) { alert("Error."); return; }
+        $("#mod-pedido-code").text(current.codigo);
+        if (current.estadoId === 1) {
+          $("#area-asignar").show(); bindAreaAsignar(current);
+        } else if (current.estadoId === 2 || current.estadoId === 5) {
+          $("#area-estado-operario").show(); bindAreaEstadoOperario(current);
+        } else if (current.estadoId === 3) {
+          $("#area-entregado").show(); bindAreaEntregado(current);
+        } else if (current.estadoId === 4) {
+          $("#area-imprimir a").attr("href", "/imprimir.html?orden=" + current.id);
+          $("#area-imprimir").show();
+        }
+        modalEdit.show();
+      }
+
+      function bindAreaEntregado(current) {
+        $("#btn-jefe-entregado").off("click").click(function () {
+          const fecha = new Date().toISOString().split("T")[0];
+          const formData = {
+            pedidoId: current.id,
+            usuarioResponsableId: operarioId,
+            fechaEntregaConfirmada: fecha,
+            tipoComprobante: "PDF",
+            contenido: "COMPROBANTE-ENTREGA-PDF",
+          };
+          $.ajax({
+            url: BASE + "/api/pedidos/entregar",
+            method: "PUT",
+            contentType: "application/json",
+            data: JSON.stringify(formData),
+            headers: { "Authorization": "Bearer " + token },
+            success: function () {
+              $("#area-entregado").hide();
+              $("#area-imprimir a").attr("href", "/imprimir.html?orden=" + current.id);
+              $("#area-imprimir").show();
+            },
+            error: function (xhr) { alert("Error: " + xhr.responseText); }
+          });
+        });
+      }
+
+      function bindAreaEstadoOperario(current) {
+        const $sel = $("#select-estado-operario").empty();
+        if (current.estadoId === 2) {
+          $sel.append(new Option("Por terminar", 3))
+            .append(new Option("En espera de material", 5));
+        } else if (current.estadoId === 5) {
+          $sel.append(new Option("Por terminar", 3))
+            .append(new Option("En producción", 2));
+        }
+        $("#form-estado-operario").off("submit").on("submit", function (e) {
+          e.preventDefault();
+          const formData = {
+            pedidoId: current.id,
+            nuevoEstadoId: parseInt($sel.val()),
+            usuarioResponsableId: operarioId,
+          };
+          $.ajax({
+            url: BASE + "/api/pedidos/cambiar-estado",
+            method: "PUT",
+            contentType: "application/json",
+            headers: { "Authorization": "Bearer " + token },
+            data: JSON.stringify(formData),
+            success: function () { window.location.reload(); },
+            error: function (xhr) { alert("Error: " + xhr.responseText); }
+          });
+        });
+      }
+
+
+      function bindAreaAsignar(current) {
+        $("#form-asignar").off("submit").on("submit", function (e) {
+          e.preventDefault();
+          const formData = {
+            pedidoId: current.id,
+            operarioId: $("#txt-operario-id").val(),
+            nuevoEstadoId: 2, // en producción
+          };
+          $.ajax({
+            url: BASE + "/api/pedidos/asignar",
+            method: "PUT",
+            contentType: "application/json",
+            data: JSON.stringify(formData),
+            headers: { "Authorization": "Bearer " + token },
+            success: function () { window.location.reload(); },
+            error: function (xhr) { alert("Error: " + xhr.responseText); }
+          });
+        });
+      }
+
+      function draw(data) {
+        for (var i = 0; i < data.length; i++) {
+          data[i].estadoText = estados["e" + data[i].estadoId];
+          data[i].operarioAsignadoText = "Sin asignacion.";
+          if (data[i].operarioAsignadoId) {
+            let opex = operariosList.find(e => e.id === data[i].operarioAsignadoId);
+            if (opex) data[i].operarioAsignadoText = "Asignado a: " + opex.nombre;
+          }
+          // ← AÑADIDO: busco y asigno nombre del cliente
+          let cli = clientesList.find(c => c.id === data[i].clienteId);
+          data[i].clienteText = cli ? cli.nombreRazonSocial : "–";
+        }
+        var tmp = { rows: [...data] };
+        var template = Handlebars.compile($("#item-template").text());
+        $("#list").html(template(tmp));
+        $(".tarea-detalle").click(function () {
+          activeModalEdit($(this).data("id"));
+        });
+      }
+
+      function load(params) {
+        $.ajax({
+          url: BASE + "/api/pedidos",
+          method: "GET",
+          contentType: "application/json",
+          data: params,
+          headers: { "Authorization": "Bearer " + token },
+          success: function (res) {
+            basePedidos = res;
+            draw(res);
+          },
+          error: function (xhr) { alert("Error: " + xhr.responseText); }
+        });
+      }
+
+      function drawOperarios() {
+        var tmp = { rows: [...operariosList] };
+        var template = Handlebars.compile($("#operatios-template").text());
+        $("#txt-operario-id").html(template(tmp));
+      }
+
+      $("#btn-logout").click(function () {
+        localStorage.clear();
+        window.location.href = "/login.html";
+      });
+
+      drawLoading();
+      setTimeout(function () {
+        drawOperarios();
+        loadRol();
+      }, 500);
+    });
+  </script>
+</body>
+
+</html>

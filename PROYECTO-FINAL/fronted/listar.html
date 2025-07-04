@@ -81,7 +81,7 @@
           <div id="area-asignar">
             <form id="form-asignar">
               <div class="mb-3">
-                <label>Ingrese el ID del Operario</label>
+                <label>Elija al operario</label>
                 <select required class="form-control" id="txt-operario-id"></select>
               </div>
               <div>
@@ -300,24 +300,33 @@
       }
 
       function bindAreaEstadoOperario(current) {
+        const $sel = $("#select-estado-operario").empty();
+        if (current.estadoId === 2) {
+          $sel.append(new Option("Por terminar", 3))
+            .append(new Option("En espera de material", 5));
+        } else if (current.estadoId === 5) {
+          $sel.append(new Option("Por terminar", 3))
+            .append(new Option("En producción", 2));
+        }
         $("#form-estado-operario").off("submit").on("submit", function (e) {
           e.preventDefault();
           const formData = {
             pedidoId: current.id,
-            nuevoEstadoId: $("#select-estado-operario").val(),
+            nuevoEstadoId: parseInt($sel.val()),
             usuarioResponsableId: operarioId,
           };
           $.ajax({
             url: BASE + "/api/pedidos/cambiar-estado",
             method: "PUT",
             contentType: "application/json",
-            data: JSON.stringify(formData),
             headers: { "Authorization": "Bearer " + token },
+            data: JSON.stringify(formData),
             success: function () { window.location.reload(); },
             error: function (xhr) { alert("Error: " + xhr.responseText); }
           });
         });
       }
+
 
       function bindAreaAsignar(current) {
         $("#form-asignar").off("submit").on("submit", function (e) {
